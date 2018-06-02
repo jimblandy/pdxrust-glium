@@ -115,6 +115,17 @@ fn main() -> Result<(), Box<Error>> {
             .. Default::default()
         };
 
+    let vane_borders_program =
+        Program::from_source(&display,
+                             &include_str!("vane.vert"),
+                             &include_str!("borders.frag"),
+                             None)?;
+    let vane_borders_draw_parameters =
+        DrawParameters {
+            line_width: Some(2.0),
+            .. Default::default()
+        };
+
     let mut vane = Vane {
         tip: [ 0.5, 0.0, 0.0 ],
         base_midpt: [ 0.0, 0.0, -0.5 ],
@@ -152,6 +163,12 @@ fn main() -> Result<(), Box<Error>> {
         frame.draw(&vertex_buffer, &glium::index::NoIndices(PrimitiveType::TrianglesList),
                    &vane_interiors_program,
                    &uniform! {}, &vane_interiors_draw_parameters)?;
+
+        let border_vertex_buffer = VertexBuffer::new(&display, &vertices[0..3])?;
+        frame.draw(&border_vertex_buffer, &glium::index::NoIndices(PrimitiveType::LineLoop),
+                   &vane_borders_program,
+                   &uniform! {}, &vane_borders_draw_parameters)?;
+
         frame.finish()?;
 
         events_loop.poll_events(|event| {
