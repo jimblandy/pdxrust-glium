@@ -2,11 +2,12 @@
 extern crate glium;
 
 use glium::{Program, Surface, VertexBuffer};
+use glium::draw_parameters::{BackfaceCullingMode, DrawParameters};
 use glium::glutin::{ContextBuilder, Event, EventsLoop, WindowBuilder, WindowEvent};
 use glium::index::PrimitiveType;
 
 use std::error::Error;
-use std::f32::consts::PI;
+use std::f32::consts::{PI, FRAC_PI_2};
 use std::time::{Instant};
 
 fn scale(a: &[f32; 3], scale: f32) -> [f32; 3] {
@@ -33,7 +34,7 @@ fn mix_by_angle(i: &[f32; 3], j: &[f32; 3], angle: f32) -> [f32; 3] {
         &scale(j, angle.sin()))
 }
 
-/// Properties identifying windmill vane spinning about its axis of
+/// Properties identifying a windmill vane spinning about its axis of
 /// symmetry in 3-space, with a distinguished front face.
 struct Vane {
     /// Location of the vane's tip (the corner that lies on the axis of
@@ -59,27 +60,41 @@ struct Vane {
     spin: f32
 }
 
+enum Face { Front, Back }
+
 impl Vane {
-    /// Return the positions of this vane's three corners, with the vane
-    /// rotated about its axis by `spin` radians.
-    fn corners(&self) -> [[f32; 3]; 3] {
+    /// Return the positions of the tree corners of the given face of this vane.
+    fn corners(&self, face: Face) -> [[f32; 3]; 3] {
         let unit_towards_corner = mix_by_angle(&self.base_unit_i,
                                                &self.base_unit_j,
                                                self.spin);
         let base_midpt_to_corner = scale(&unit_towards_corner, self.base_radius);
         let corner1 = add(&self.base_midpt, &base_midpt_to_corner);
         let corner2 = subtract(&self.base_midpt, &base_midpt_to_corner);
-        // Viewed from the front, our vertices must appear in clockwise order.
-        [self.tip, corner1, corner2]
+        // Viewed from the front, each face's vertices must appear in clockwise order.
+        match face {
+            Face::Front => [self.tip, corner1, corner2],
+            Face::Back  => [self.tip, corner2, corner1]
+        }
+    }
+    /// Return a unit vector normal to the vane's given face.
+    fn normal(&self, face: Face) -> [f32; 3] {
+        let n = mix_by_angle(&self.base_unit_i, &self.base_unit_j,
+                             self.spin + FRAC_PI_2);
+        match face {
+            Face::Front => n,
+            Face::Back => negate(&n)
+        }
     }
 }
 
 #[derive(Clone, Copy, Debug)]
 struct Vertex {
-    position: [f32; 3]
+    position: [f32; 3],
+    normal: [f32; 3]
 }
 
-implement_vertex!(Vertex, position);
+implement_vertex!(Vertex, position, normal);
 
 fn main() -> Result<(), Box<Error>> {
     let mut events_loop = EventsLoop::new();
@@ -94,6 +109,11 @@ fn main() -> Result<(), Box<Error>> {
                              &include_str!("vane.vert"),
                              &include_str!("interior.frag"),
                              None)?;
+    let vane_interiors_draw_parameters =
+        DrawParameters {
+            backface_culling: BackfaceCullingMode::CullCounterClockwise,
+            .. Default::default()
+        };
 
     let mut vane = Vane {
         tip: [ 0.5, 0.0, 0.0 ],
@@ -115,19 +135,23 @@ fn main() -> Result<(), Box<Error>> {
         let spin = seconds * 0.125 * 2.0 * PI;
 
         let mut frame = display.draw();
-        frame.clear_color(1.0, 1.0, 1.0, 1.0);
+        frame.clear_color(0.8, 0.8, 0.8, 1.0);
 
         let mut vertices = Vec::new();
 
         vane.spin = spin;
-        vertices.extend(vane.corners().iter()
-                        .map(|&position| Vertex { position }));
-        assert_eq!(vertices.len(), 3);
+        let normal = vane.normal(Face::Front);
+        vertices.extend(vane.corners(Face::Front).iter()
+                        .map(|&position| Vertex { position, normal }));
+        let backface_normal = vane.normal(Face::Back);
+        vertices.extend(vane.corners(Face::Back).iter()
+                        .map(|&position| Vertex { position, normal: backface_normal }));
+        assert_eq!(vertices.len(), 6);
         let vertex_buffer = VertexBuffer::new(&display, &vertices)?;
 
         frame.draw(&vertex_buffer, &glium::index::NoIndices(PrimitiveType::TrianglesList),
                    &vane_interiors_program,
-                   &uniform! {}, &Default::default())?;
+                   &uniform! {}, &vane_interiors_draw_parameters)?;
         frame.finish()?;
 
         events_loop.poll_events(|event| {
