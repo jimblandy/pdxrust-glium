@@ -121,7 +121,8 @@ fn main() -> Result<(), Box<Error>> {
     let window = WindowBuilder::new()
         .with_dimensions(1000, 1000);
     let context = ContextBuilder::new()
-        .with_vsync(true);
+        .with_vsync(true)
+        .with_depth_buffer(24);
     let display = glium::Display::new(window, context, &events_loop)?;
 
     let vane_interiors_program =
@@ -131,6 +132,11 @@ fn main() -> Result<(), Box<Error>> {
                              None)?;
     let vane_interiors_draw_parameters =
         DrawParameters {
+            depth: glium::Depth {
+                test: glium::DepthTest::IfMore,
+                write: true,
+                .. Default::default()
+            },
             backface_culling: BackfaceCullingMode::CullCounterClockwise,
             .. Default::default()
         };
@@ -142,6 +148,11 @@ fn main() -> Result<(), Box<Error>> {
                              None)?;
     let vane_borders_draw_parameters =
         DrawParameters {
+            depth: glium::Depth {
+                test: glium::DepthTest::IfMore,
+                write: true,
+                .. Default::default()
+            },
             line_width: Some(2.0),
             .. Default::default()
         };
@@ -187,12 +198,12 @@ fn main() -> Result<(), Box<Error>> {
         let spin = seconds * 0.125 * 2.0 * PI;
 
         let mut frame = display.draw();
-        frame.clear_color(0.8, 0.8, 0.8, 1.0);
+        frame.clear_color_and_depth((0.8, 0.8, 0.8, 1.0), 0.0);
 
         let mut vertices = Vec::new();
 
-        for vane in &mut vanes {
-            vane.spin = spin;
+        for (i, vane) in vanes.iter_mut().enumerate() {
+            vane.spin = spin + i as f32;
         }
 
         // Put the front faces first; we'll re-use them as vertices for the
