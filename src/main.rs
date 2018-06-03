@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate glium;
 
-use glium::{Program, Surface, VertexBuffer};
+use glium::{IndexBuffer, Program, Surface, VertexBuffer};
 use glium::draw_parameters::{BackfaceCullingMode, DrawParameters};
 use glium::glutin::{ContextBuilder, Event, EventsLoop, WindowBuilder, WindowEvent};
 use glium::index::PrimitiveType;
@@ -26,12 +26,32 @@ fn subtract(a: &[f32; 3], b: &[f32; 3]) -> [f32; 3] {
     add(a, &negate(b))
 }
 
+fn midpoint(a: &[f32; 3], b: &[f32; 3]) -> [f32; 3] {
+    scale(&add(a, b), 0.5)
+}
+
+fn length(a: &[f32; 3]) -> f32 {
+    f32::sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2])
+}
+
+fn normalize(a: &[f32; 3]) -> [f32; 3] {
+    let inverse_length = 1.0 / length(a);
+    assert!(!inverse_length.is_infinite());
+    scale(a, inverse_length)
+}
+
 /// Return the point `angle` radians around the origin-centered ellipse whose
 /// major axis (center to zero-radians point) is `i` and whose minor axis
 /// (center to π/2) is `j`.
 fn mix_by_angle(i: &[f32; 3], j: &[f32; 3], angle: f32) -> [f32; 3] {
     add(&scale(i, angle.cos()),
         &scale(j, angle.sin()))
+}
+
+/// Return a unit vector in the XY plane that is rotated `angle` radians
+/// counter-clockwise from the X axis.
+fn unit_at_angle(angle: f32) -> [f32; 3] {
+    [ angle.cos(), angle.sin(), 0.0 ]
 }
 
 /// Properties identifying a windmill vane spinning about its axis of
@@ -126,14 +146,35 @@ fn main() -> Result<(), Box<Error>> {
             .. Default::default()
         };
 
-    let mut vane = Vane {
-        tip: [ 0.5, 0.0, 0.0 ],
-        base_midpt: [ 0.0, 0.0, -0.5 ],
-        base_radius: 0.5,
-        base_unit_i: [ 0.0, -1.0, 0.0 ],
-        base_unit_j: [ -0.707, 0.0, 0.707 ],
-        spin: 0.0
-    };
+    fn vane(angle: f32) -> Vane {
+        let inner_radius = 0.25;
+        let outer_radius = 0.5;
+
+        let unit_tip = unit_at_angle(angle);
+        let unit1    = unit_at_angle(angle + PI * 7.0 / 6.0);
+        let unit2    = unit_at_angle(angle + PI * 5.0 / 6.0);
+
+        let tip = scale(&unit_tip, inner_radius);
+        let corner1 = scale(&unit1, outer_radius);
+        let corner2 = scale(&unit2, outer_radius);
+        let base_midpt = midpoint(&corner1, &corner2);
+        let base_midpt_to_corner1 = subtract(&corner1, &base_midpt);
+
+        Vane {
+            tip,
+            base_midpt,
+            base_radius: length(&base_midpt_to_corner1),
+            base_unit_i: normalize(&base_midpt_to_corner1),
+            base_unit_j: [ 0.0, 0.0, 1.0 ],
+            spin: 0.0
+        }
+    }
+
+    let mut vanes = [
+        vane(0.0),
+        vane(PI * 2.0 / 3.0),
+        vane(PI * 4.0 / 3.0)
+    ];
 
     let start_time = Instant::now();
 
@@ -150,22 +191,39 @@ fn main() -> Result<(), Box<Error>> {
 
         let mut vertices = Vec::new();
 
-        vane.spin = spin;
-        let normal = vane.normal(Face::Front);
-        vertices.extend(vane.corners(Face::Front).iter()
-                        .map(|&position| Vertex { position, normal }));
-        let backface_normal = vane.normal(Face::Back);
-        vertices.extend(vane.corners(Face::Back).iter()
-                        .map(|&position| Vertex { position, normal: backface_normal }));
-        assert_eq!(vertices.len(), 6);
-        let vertex_buffer = VertexBuffer::new(&display, &vertices)?;
+        for vane in &mut vanes {
+            vane.spin = spin;
+        }
 
+        // Put the front faces first; we'll re-use them as vertices for the
+        // border lines.
+        for vane in &vanes {
+            let normal = vane.normal(Face::Front);
+            vertices.extend(vane.corners(Face::Front).iter()
+                            .map(|&position| Vertex { position, normal }));
+        }
+
+        for vane in &vanes {
+            let normal = vane.normal(Face::Back);
+            vertices.extend(vane.corners(Face::Back).iter()
+                            .map(|&position| Vertex { position, normal }));
+        }
+
+        let vertex_buffer = VertexBuffer::new(&display, &vertices)?;
         frame.draw(&vertex_buffer, &glium::index::NoIndices(PrimitiveType::TrianglesList),
                    &vane_interiors_program,
                    &uniform! {}, &vane_interiors_draw_parameters)?;
 
-        let border_vertex_buffer = VertexBuffer::new(&display, &vertices[0..3])?;
-        frame.draw(&border_vertex_buffer, &glium::index::NoIndices(PrimitiveType::LineLoop),
+        // Reuse just the front faces' vertices for the borders.
+        let border_vertex_buffer = VertexBuffer::new(&display, &vertices[0..9])?;
+        let indices: Vec<u16> = [0, 3, 6].iter()
+            .flat_map(|&i| vec![ i, i+1,
+                                 i+1, i+2,
+                                 i+2, i ])
+            .collect();
+        let border_index_buffer = IndexBuffer::new(&display, PrimitiveType::LinesList,
+                                                   &indices)?;
+        frame.draw(&border_vertex_buffer, &border_index_buffer,
                    &vane_borders_program,
                    &uniform! {}, &vane_borders_draw_parameters)?;
 
