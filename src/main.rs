@@ -157,7 +157,7 @@ fn main() -> Result<(), Box<Error>> {
             .. Default::default()
         };
 
-    fn vane(angle: f32) -> Vane {
+    fn vane(pt: &[f32; 3], angle: f32) -> Vane {
         let inner_radius = 0.25;
         let outer_radius = 0.5;
 
@@ -172,8 +172,8 @@ fn main() -> Result<(), Box<Error>> {
         let base_midpt_to_corner1 = subtract(&corner1, &base_midpt);
 
         Vane {
-            tip,
-            base_midpt,
+            tip: add(pt, &tip),
+            base_midpt: add(pt, &base_midpt),
             base_radius: length(&base_midpt_to_corner1),
             base_unit_i: normalize(&base_midpt_to_corner1),
             base_unit_j: [ 0.0, 0.0, 1.0 ],
@@ -182,9 +182,13 @@ fn main() -> Result<(), Box<Error>> {
     }
 
     let mut vanes = [
-        vane(0.0),
-        vane(PI * 2.0 / 3.0),
-        vane(PI * 4.0 / 3.0)
+        vane(&[0.0, 0.0, 0.0], 0.0),
+        vane(&[0.0, 0.0, 0.0], PI * 2.0 / 3.0),
+        vane(&[0.0, 0.0, 0.0], PI * 4.0 / 3.0),
+
+        vane(&[1.0, 1.0, -2.5], 0.0),
+        vane(&[1.0, 1.0, -2.5], PI * 2.0 / 3.0),
+        vane(&[1.0, 1.0, -2.5], PI * 4.0 / 3.0),
     ];
 
     let start_time = Instant::now();
@@ -203,6 +207,7 @@ fn main() -> Result<(), Box<Error>> {
         let mut vertices = Vec::new();
 
         for (i, vane) in vanes.iter_mut().enumerate() {
+            let spin = spin * (if i >= 3 { 0.5 } else { 1.0 });
             vane.spin = spin + i as f32;
         }
 
@@ -226,11 +231,14 @@ fn main() -> Result<(), Box<Error>> {
                    &uniform! {}, &vane_interiors_draw_parameters)?;
 
         // Reuse just the front faces' vertices for the borders.
-        let border_vertex_buffer = VertexBuffer::new(&display, &vertices[0..9])?;
-        let indices: Vec<u16> = [0, 3, 6].iter()
-            .flat_map(|&i| vec![ i, i+1,
-                                 i+1, i+2,
-                                 i+2, i ])
+        let border_vertex_buffer = VertexBuffer::new(&display, &vertices[0..18])?;
+        let indices: Vec<u16> = (0..6)
+            .flat_map(|n| {
+                let i = n * 3;
+                vec![ i, i+1,
+                      i+1, i+2,
+                      i+2, i ]
+            })
             .collect();
         let border_index_buffer = IndexBuffer::new(&display, PrimitiveType::LinesList,
                                                    &indices)?;

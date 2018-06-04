@@ -5,7 +5,12 @@ in vec3 normal;
 
 out vec3 normal_f;
 
+const float camera_z = 4.0;
+const float plane_z = 1.0;
+const float plane_d = camera_z - plane_z;
+
 void main() {
-    gl_Position = vec4(position.xy, (position.z + 1.0) / 2.0, 1.0);
+    float shrinkage = plane_d / (camera_z - position.z);
+    gl_Position = vec4(position.xy * shrinkage, (position.z + 1.0) / 4.0, 1.0);
     normal_f = normal;
 }
