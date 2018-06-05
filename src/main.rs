@@ -1,13 +1,17 @@
 #[macro_use]
 extern crate glium;
+extern crate image;
 
-use glium::{IndexBuffer, Program, Surface, VertexBuffer};
+use glium::{Display, IndexBuffer, Program, Surface, VertexBuffer};
 use glium::draw_parameters::{BackfaceCullingMode, DrawParameters};
 use glium::glutin::{ContextBuilder, Event, EventsLoop, WindowBuilder, WindowEvent};
 use glium::index::PrimitiveType;
+use glium::texture::{Texture2d, RawImage2d};
+use glium::uniforms::SamplerWrapFunction;
 
 use std::error::Error;
 use std::f32::consts::{PI, FRAC_PI_2};
+use std::io::Cursor;
 use std::time::{Instant};
 
 fn scale(a: &[f32; 3], scale: f32) -> [f32; 3] {
@@ -106,15 +110,39 @@ impl Vane {
             Face::Back => negate(&n)
         }
     }
+
+    /// Return the positions of each corner of the given `face` in the vane's
+    /// texture space.
+    fn texture_corners(&self, face: Face) -> [[f32; 2]; 3] {
+        match face {
+            Face::Front => [[ -0.6, -0.8 ],
+                            [  1.6,  0.5 ],
+                            [  0.5,  1.6 ]],
+            Face::Back  => [[ -0.6, -0.8 ],
+                            [  0.5,  1.6 ],
+                            [  1.6,  0.7 ]]
+        }
+    }
+}
+
+static VANE_TEXTURE : &'static [u8] = include_bytes!("paisley.png");
+
+fn build_vane_texture(display: &Display) -> Result<Texture2d, Box<Error>>
+{
+    let image = image::load(Cursor::new(VANE_TEXTURE), image::PNG)?.to_rgba();
+    let (width, height) = image.dimensions();
+    let raw_image = RawImage2d::from_raw_rgba(image.into_raw(), (width, height));
+    Ok(Texture2d::new(display, raw_image)?)
 }
 
 #[derive(Clone, Copy, Debug)]
 struct Vertex {
     position: [f32; 3],
-    normal: [f32; 3]
+    normal: [f32; 3],
+    texture: [f32; 2]
 }
 
-implement_vertex!(Vertex, position, normal);
+implement_vertex!(Vertex, position, normal, texture);
 
 fn main() -> Result<(), Box<Error>> {
     let mut events_loop = EventsLoop::new();
@@ -156,6 +184,8 @@ fn main() -> Result<(), Box<Error>> {
             line_width: Some(2.0),
             .. Default::default()
         };
+
+    let vane_texture = build_vane_texture(&display)?;
 
     fn vane(pt: &[f32; 3], angle: f32) -> Vane {
         let inner_radius = 0.25;
@@ -216,19 +246,28 @@ fn main() -> Result<(), Box<Error>> {
         for vane in &vanes {
             let normal = vane.normal(Face::Front);
             vertices.extend(vane.corners(Face::Front).iter()
-                            .map(|&position| Vertex { position, normal }));
+                            .zip(vane.texture_corners(Face::Front).iter())
+                            .map(|(&position, &texture)|
+                                 Vertex { position, normal, texture }));
         }
 
         for vane in &vanes {
             let normal = vane.normal(Face::Back);
             vertices.extend(vane.corners(Face::Back).iter()
-                            .map(|&position| Vertex { position, normal }));
+                            .zip(vane.texture_corners(Face::Back).iter())
+                            .map(|(&position, &texture)|
+                                 Vertex { position, normal, texture }));
         }
 
         let vertex_buffer = VertexBuffer::new(&display, &vertices)?;
         frame.draw(&vertex_buffer, &glium::index::NoIndices(PrimitiveType::TrianglesList),
                    &vane_interiors_program,
-                   &uniform! {}, &vane_interiors_draw_parameters)?;
+                   &uniform! {
+                       vane_texture: vane_texture
+                           .sampled()
+                           .wrap_function(SamplerWrapFunction::Clamp)
+                   },
+                   &vane_interiors_draw_parameters)?;
 
         // Reuse just the front faces' vertices for the borders.
         let border_vertex_buffer = VertexBuffer::new(&display, &vertices[0..18])?;
