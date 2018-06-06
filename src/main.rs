@@ -37,13 +37,6 @@ struct Vane {
     base_midpt_to_corner: [f32; 3]
 }
 
-#[derive(Clone, Copy, Debug)]
-struct Vertex {
-    position: [f32; 3]
-}
-
-implement_vertex!(Vertex, position);
-
 impl Vane {
     /// Return the positions of this vane's three corners, with the vane
     /// rotated about its axis by `spin` radians.
@@ -54,6 +47,13 @@ impl Vane {
         [self.tip, corner1, corner2]
     }
 }
+
+#[derive(Clone, Copy, Debug)]
+struct Vertex {
+    position: [f32; 3]
+}
+
+implement_vertex!(Vertex, position);
 
 fn main() -> Result<(), Box<Error>> {
     let mut events_loop = EventsLoop::new();
