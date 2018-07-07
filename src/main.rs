@@ -115,17 +115,17 @@ impl Vane {
     /// texture space.
     fn texture_corners(&self, face: Face) -> [[f32; 2]; 3] {
         match face {
-            Face::Front => [[ -0.6, -0.8 ],
-                            [  1.6,  0.5 ],
-                            [  0.5,  1.6 ]],
-            Face::Back  => [[ -0.6, -0.8 ],
-                            [  0.5,  1.6 ],
-                            [  1.6,  0.7 ]]
+            Face::Front => [[ 0.50, 0.05 ],
+                            [ 0.95, 0.95 ],
+                            [ 0.05, 0.95 ]],
+            Face::Back  => [[ 0.50, 0.05 ],
+                            [ 0.05, 0.95 ],
+                            [ 0.95, 0.95 ]]
         }
     }
 }
 
-static VANE_TEXTURE : &'static [u8] = include_bytes!("paisley.png");
+static VANE_TEXTURE : &'static [u8] = include_bytes!("rainbow-vane-small.png");
 
 fn build_vane_texture(display: &Display) -> Result<Texture2d, Box<Error>>
 {
