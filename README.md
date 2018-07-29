@@ -10,7 +10,7 @@ my attempt to write the simplest possible program that still uses most of the
 essential techniques that any graphical program will need.
 
 This is not model Rust code, nor does it try to use OpenGL efficiently. Rather,
-my goal is to present the API's behavior with as little inference from
+my goal is to present the API's behavior with as little interference from
 abstraction and optimization as possible. So I don't use any of the pretty
 vector arithmetic crates available (I recommend the `euclid` crate); it's all
 functions that operate directly on `[f32; 3]` values. And you'll have to figure
